@@ -1,0 +1,249 @@
+Харківський національний університет радіоелектроніки
+Факультет комп’ютерних наук
+Катедра програмної інженерії
+
+ЗВІТ
+з лабораторної роботи №1
+з дисципліни «Скриптові мови програмування»
+
+Виконав
+ст. гр. ПЗПІ-23-5
+Біляк Данило
+
+Перевірив
+ст. викладач катедри ПІ
+Сокорчук Ігор Петрович
+
+Харків 2025
+
+1
+
+1 ІСТОРІЯ ЗМІН
+№	Дата	Версія звіту	Опис змін та виправлень
+1	03.05.2025	0.1	Створено розділ «Завдання», «Опис виконаноъ роботи» та «Висновки»
+
+2
+
+2 ЗАВДАННЯ
+– Розробити Bash-скрипт, який обробляє експортований із сайту https://cist.nure.ua/ розклад занять для всіх груп потоку в форматі CSV та перетворює його у формат CSV для завантаження в Google Календар
+– Скрипт повинен:
+ 1. Читати вхідний CSV файл та вибирати рядки, що відповідають вибраній академічній групі, 
+ 2. Визначити порядкий номер для кожного заняття (лекція, практичне заняття, лабораторна робота) із врахуванням того, що лабораторні роботи складаються із двох пар, а решта занять — із однієї пари,
+ 3. Створити поле «Subject» із поля «Тема» вхідного CSV файла, але БЕЗ назви академічної групи та дефіса на початку цього поля ("ПЗПІ-23-1 - ПрПА Пз DL ПЗПІ-23-1"),
+ 4. Додати порядковий номер наприкінці теми (Subject) кожного заняття після крапки з комою (опис заняття; №1),
+ 5. Переформатувати дату та час до формату «mm/dd/yyyy, HH:MM AM|PM,» Gogle Календаря 12-годинний формат часу. Наприклад: 02/30/2025, 11:15 AM,
+ 6. Заповнити поле «Description» текстом із поля «Опис (Описание)» вхідного CSV файла
+ 7. Відформатувати дані відповідно до вимог Google Календаря https://support.google.com/calendar/.
+ 8. Виводити створені для Google Календаря дані у стандартний потік виведення, якщо це не заблоковано ключем -q або --quiet
+ 9. Записати результат
+
+
+3
+
+3 ОПИС ВИКОНАНОЇ РОБОТИ
+Для виконання завдання створюємо файл у стартовій директорії за допомогою команди “touch”. Після створення використовуємо команду “nano” для відкриття файлу у текстовому редакторі. Протягом виконання було розроблено таку програму:
+
+  1  #!/bin/bash
+  2  
+  3  VERSION="1.0"
+  4  
+  5  print_help() {
+  6      echo "Використання: $0 [ОПЦІЇ] 'Назва групи' вхідний_файл.csv"
+  7      echo
+  8      echo "Опції:"
+  9      echo "  --help       Вивести цю довідку та завершити роботу"
+ 10      echo "  --version    Вивести інформацію про версію та завершити роботу"
+ 11      echo "  -q, --quiet  Працювати у тихому режимі (без виводу повідомлень)"
+ 12      exit 0
+ 13  }
+ 14  
+ 15  print_version() {
+ 16      echo "$0 версія $VERSION"
+ 17      exit 0
+ 18  }
+ 19  
+
+У рядках 1-19 вказуємо, що це bash-скрипт, вказуємо версію та створюємо методи для виведення допомоги та версії.
+
+ 20  select_csv_file() {
+ 21      local csv_files=($(ls -1v TimeTable_??_??_20??.csv 2>/dev/null))
+ 22      if [ ${#csv_files[@]} -eq 0 ]; then
+ 23          echo "Помилка: У поточній директорії немає CSV-файлів за шаблоном TimeTable_??_??_20??.csv." >&2
+ 24          exit 1
+ 25      fi
+ 26      select file in "${csv_files[@]}"; do
+ 27          if [[ -n "$file" ]]; then
+ 28              echo "$file"
+ 29              break
+ 30          else
+ 31              echo "Будь ласка, виберіть правильний номер файлу."
+ 32          fi
+ 33      done
+ 34  }
+ 35  
+ 36  select_academic_group() {
+ 37      local input_file="$1"
+ 38      local groups=($(iconv -f WINDOWS-1251 -t UTF-8 "$input_file" 2>/dev/null | tr '\r' '\n' | awk -F'","' '
+ 39          NR > 1 {
+ 40              if (match($0, /[A-Za-zА-Яа-яіїєґІЇЄҐ]+-[0-9]{2}-[0-9]{1,2}/)) {
+ 41                  group = substr($0, RSTART, RLENGTH);
+ 42                  print group;
+ 43              }
+ 44          }
+ 45      ' | sort | uniq))
+ 46      if [ ${#groups[@]} -eq 0 ]; then
+ 47          echo "Помилка: У файлі '$input_file' не знайдено академічних груп." >&2
+ 48          exit 1
+ 49      fi
+ 50      select group in "${groups[@]}"; do
+ 51          if [[ -n "$group" ]]; then
+ 52              echo "$group"
+ 53              break
+ 54          else
+ 55              echo "Будь ласка, виберіть правильний номер групи."
+ 56          fi
+ 57      done
+ 58  }
+ 59 
+
+У рядках 20-59 реалізовано механіз, який пропонує користувачу доступні файли розкладу у потоічній директорії та групи з обраного файлу. Цей функціонал буде використовуватись тоді, коли користувач буде викликати скрипт без параметрів.
+
+ 60  QUIET=0
+ 61  POSITIONAL=()
+ 62   
+ 63  while [[ $# -gt 0 ]]; do
+ 64      case "$1" in
+ 65          --help) print_help ;;
+ 66          --version) print_version ;;
+ 67          -q|--quiet) QUIET=1 ;;
+ 68          *) POSITIONAL+=("$1") ;;
+ 69      esac
+ 70      shift
+ 71  done
+ 72  
+ 73  set -- "${POSITIONAL[@]}"
+ 74  
+ 75  if [ "$#" -lt 2 ]; then
+ 76      if [ "$#" -eq 0 ]; then
+ 77          INPUT_FILE=$(select_csv_file)
+ 78          GROUP_NAME=$(select_academic_group "$INPUT_FILE")
+ 79      else
+ 80          echo "Помилка: необхідно вказати 'Назву групи' та вхідний CSV-файл." >&2
+ 81          exit 1
+ 82      fi
+ 83  else
+ 84      GROUP_NAME="$1"
+ 85      INPUT_FILE="$2"
+ 86  fi
+ 87  
+ 88  if [ ! -f "$INPUT_FILE" ]; then
+ 89      echo "Помилка: Файл '$INPUT_FILE' не знайдено." >&2
+ 90      exit 1
+ 91  fi
+ 92  
+ 93  DATE_PART=$(echo "$INPUT_FILE" | grep -oE '[0-9]{2}_[0-9]{2}_[0-9]{4}')
+ 94  OUTPUT_FILE="Google_TimeTable_${DATE_PART}.csv"
+ 95  
+
+У рядках 60-95 оброблюємо вхідні параметри від користувача і якщо користувач обрав вхідний файл - одразу задаємо назву вихідного файлу на його основі.
+
+ 96  {
+ 97      echo '"Subject","Start Date","Start Time","End Date","End Time","Description"'
+ 98  
+ 99      iconv -f WINDOWS-1251 -t UTF-8 "$INPUT_FILE" | tr '\r' '\n' | awk -v group="$GROUP_NAME" -F'","' '
+100          BEGIN { OFS="," }
+101  
+102          NR == 1 { next }
+103  
+104          {
+105              subject = $1;
+106              start_date = $2;
+107              start_time = $3;
+108              end_date = $4;
+109              end_time = $5;
+110  
+111              split(start_date, date_parts, ".");
+112              split(start_time, time_parts, ":");
+113              sort_key = date_parts[3] date_parts[2] date_parts[1] time_parts[1] time_parts[2] time_parts[3];
+114  
+115              data[sort_key] = $0;
+116          }
+117  
+
+У рядках 96-117 починаємо запис даних у новий файл з заголовку, після чого конвертуємо вхідний файл у коректний формат для обробки, отримуємо з нього дані та сортуємо зважаючи на дати та час проведення занять.
+
+118          function convert_time(t) {
+119              split(t, parts, ":")
+120              hour = parts[1] + 0
+121              minute = parts[2]
+122              second = (length(parts) > 2) ? parts[3] : "00"
+123              suffix = (hour >= 12) ? "PM" : "AM"
+124              if (hour == 0) hour = 12
+125              else if (hour > 12) hour -= 12
+126              return hour ":" minute ":" second " " suffix
+127          }
+128  
+129          function convert_date(d) {
+130              split(d, parts, ".")
+131              return parts[2] "/" parts[1] "/" parts[3]
+132          }
+133  
+
+У рядках 118-133 оголошено дві функції, які будуть використовуватись для переводу часу та дати на американський манер.
+
+134         END {
+135             n = asorti(data, sorted_keys)
+136             for (i = 1; i <= n; i++) {
+137                 row = data[sorted_keys[i]]
+138                 split(row, fields, "\",\"")
+139 
+140                 subject_raw = substr(fields[1], 2)
+141                 subject = (index(subject_raw, " - ") > 0) ? substr(subject_raw, index(subject_raw, " - ") + 3) : subject_raw
+142                 description = subject;
+143 
+144                 group_prefix = substr(group, 1, length(group) - 2)
+145                 group_number = substr(group, length(group))
+146 
+147                 if (index(subject_raw, group_prefix) > 0 && index(subject_raw, group_number) > 0) {
+148 
+149                     if (subject ~ / Лб /) {
+150                         if (!(subject in lab_count)) {
+151                             lab_count[subject] = 0
+152                             lab_seen[subject] = 0
+153                         }
+154                         lab_seen[subject]++
+155                         if (lab_seen[subject] % 2 == 1) {
+156                             lab_count[subject]++
+157                         }
+158                         num = lab_count[subject]
+159                     } else {
+160                         if (!(subject in count)) count[subject] = 0
+161                         count[subject]++
+162                         num = count[subject]
+163                     }
+164 
+165                     subject_with_num = subject "; №" num
+166 
+167                     start_date = convert_date(fields[2])
+168                     end_date = convert_date(fields[4])
+169                     start_time = convert_time(fields[3])
+170                     end_time = convert_time(fields[5])
+171 
+172                     print "\"" subject_with_num "\",\"" start_date "\",\"" start_time "\",\"" end_date "\",\"" end_time "\",\"" description "\""
+173                 }
+174             }
+175         }
+176     '
+177 } > "$OUTPUT_FILE"
+178 
+179 if [ "$QUIET" -eq 0 ]; then
+180     echo "Файл підготовлено: $OUTPUT_FILE"
+181 fi
+
+У рядках 134-181 аналізуємо файл та виокремлюємо потрібні записи занять, ведемо їх нумерацію (з урахуванням того, що лабораторны заняття йдуть парами) та використовуємо попередьо згадані методи для конвертації часу та дати. Отриману інформацію записуємо у вихідний файл та виводимо повідомлення про завершення роботи скрипту.
+
+
+4
+
+4 ВИСНОВКИ
+Під час виконання практичної роботи я набув навичок створення Bash-скриптів. Я навчився використовувати текстовий редактор nano та основам використання різних типів циклів у bash. Навчився використовувати команди select, ls, awk, sort, uniq, iconv і подібні.
