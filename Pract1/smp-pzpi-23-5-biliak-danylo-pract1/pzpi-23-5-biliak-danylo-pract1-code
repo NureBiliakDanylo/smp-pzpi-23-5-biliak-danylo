@@ -1,1 +1,52 @@
-1
+#!/bin/bash
+if [ $# -ne 2 ]; then
+echo "Помилка: потрібно передати два аргументи (висоту ялинки та ширину шару снігу)" >&2
+exit 1
+fi
+tree_height=$(( $1 / 1 ))
+snow_width=$(( $2 / 1 ))
+if [ "$tree_height" -le 6 ] || [ "$snow_width" -lt 5 ]; then
+echo "Помилка: неможливо побудувати ялинку з такими параметрами." >&2
+exit 1
+fi
+
+print_tier() {
+local tier_height=$1
+local max_width=$2
+local char1=$3
+local char2=$4
+i=0
+while [ $i -lt $tier_height ]; do
+local stars=$(( 1 + i * 2 ))
+local spaces=$(( (max_width - stars) / 2 ))
+if (( i % 2 == 0 )); then
+char="$char1"
+else
+char="$char2"
+fi
+printf "%*s%s\n" "$spaces" "" "$(printf "$char%.0s" $(seq 1 $stars))"
+i=$((i + 1))
+done
+}
+
+tier_height=$(( (tree_height - 3) / 2 ))
+for t in 0 1; do
+if (( t % 2 == 0 )); then
+print_tier "$tier_height" "$snow_width" "*" "#"
+else
+print_tier "$tier_height" "$snow_width" "#" "*"
+fi
+done
+
+count=1
+until [ $count -gt 2 ]; do
+printf "%*s###\n" $(( (snow_width - 3) / 2 )) ""
+count=$((count + 1))
+done
+
+for ((i = 0; i < snow_width; i++)); do
+printf "*"
+done
+printf "\n"
+exit 0
+
